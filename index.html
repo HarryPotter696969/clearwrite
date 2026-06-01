@@ -118,6 +118,20 @@
   .flagsbadge.ok{color:var(--clear)}
   .flagsbadge.bad{color:var(--high)}
 
+  /* property image (AI rendering + builder upload) */
+  .imagebox{margin-top:20px;border-top:1px solid var(--line);padding-top:18px}
+  .imghead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;
+    font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink-soft)}
+  .img-actions{display:flex;gap:8px;align-items:center}
+  .img-actions .copy,.img-actions label.copy{cursor:pointer;display:inline-block}
+  #imgWrap img{max-width:100%;display:block;border:1px solid var(--line);background:#fffdf7}
+  #imgWrap:empty::before{content:"No image yet — generate a rendering or upload one.";
+    color:var(--ink-faint);font-style:italic;font-size:14px}
+  .imgcap{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;
+    color:var(--ink-faint);margin-top:8px;text-transform:uppercase}
+  .imgcap.ai{color:var(--med)}
+
   /* rendered / results */
   #rendered{min-height:120px;font-size:18px;line-height:1.8;white-space:pre-wrap}
   #rendered:empty::before{content:"Scan results appear here.";color:var(--ink-faint);font-style:italic}
@@ -241,6 +255,19 @@
             <span class="rw-actions"><span class="flagsbadge ok" id="flagsBadge"></span><button class="copy" id="copyBtn">Copy</button></span></h4>
           <p id="rewriteText"></p>
           <div class="err" id="rewriteErr"></div>
+        </div>
+        <div class="imagebox" id="imageBox">
+          <div class="imghead">
+            <span id="imgLabel">Property image</span>
+            <span class="img-actions">
+              <button class="copy" id="genImgBtn">Generate rendering</button>
+              <label class="copy" for="imgFile">Upload</label>
+              <input type="file" id="imgFile" accept="image/*" hidden>
+            </span>
+          </div>
+          <div id="imgWrap"></div>
+          <div class="imgcap" id="imgCap"></div>
+          <div class="err" id="imgErr"></div>
         </div>
       </div>
 
@@ -501,6 +528,51 @@ $("copyBtn").addEventListener("click", () => {
   navigator.clipboard?.writeText(t);
   $("copyBtn").textContent = "Copied";
   setTimeout(()=>$("copyBtn").textContent="Copy", 1400);
+});
+
+/* ---- property image: AI rendering (Gemini) + builder upload ---- */
+function showImage(src, caption, isAI){
+  $("imgWrap").innerHTML = "";
+  const img = document.createElement("img");
+  img.src = src; img.alt = caption;
+  $("imgWrap").appendChild(img);
+  $("imgCap").textContent = caption;
+  $("imgCap").className = "imgcap" + (isAI ? " ai" : "");
+}
+
+$("genImgBtn").addEventListener("click", async () => {
+  const facts = $("input").value.trim();
+  const err = $("imgErr");
+  err.textContent = "";
+  if(!facts){ err.textContent = "Add some property details first."; return; }
+  $("imgWrap").innerHTML = `<span class="spin"></span> Generating rendering…`;
+  $("imgCap").textContent = ""; $("genImgBtn").disabled = true;
+  try{
+    if(WORKER_URL.indexOf("__WORKER_URL__") !== -1)
+      throw new Error("service not configured yet");
+    const res = await fetch(WORKER_URL,{
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ mode:"image", facts })
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error((data && data.error) || ("HTTP "+res.status));
+    if(!data.image) throw new Error("no image returned");
+    showImage(data.image, "AI rendering — not a photograph of the actual property", true);
+  }catch(e){
+    $("imgWrap").innerHTML = "";
+    err.textContent = "Couldn't generate a rendering right now ("+e.message+"). Try again in a moment.";
+  }finally{
+    $("genImgBtn").disabled = false;
+  }
+});
+
+$("imgFile").addEventListener("change", (e) => {
+  const file = e.target.files && e.target.files[0];
+  $("imgErr").textContent = "";
+  if(!file) return;
+  if(!file.type.startsWith("image/")){ $("imgErr").textContent = "Please choose an image file."; return; }
+  if(file.size > 12*1024*1024){ $("imgErr").textContent = "Image is too large (max 12 MB)."; return; }
+  showImage(URL.createObjectURL(file), "Builder rendering (uploaded) — " + file.name, false);
 });
 </script>
 </body>

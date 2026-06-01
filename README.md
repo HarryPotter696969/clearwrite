@@ -23,7 +23,17 @@ through a tiny **Cloudflare Worker** proxy that also calls **Google Maps**.
   shows **"✓ 0 flags"** as proof.
 - **Rewrite listing** (mode) — paste a listing; **Gemini** returns a compliant
   rewrite. No Maps.
+- **Generate rendering** — generates an AI concept image of the home from the
+  facts (Gemini image model), captioned **"AI rendering — not a photograph of the
+  actual property."** The prompt depicts the building only (no people), so the
+  image never signals who "should" live there. Good for not-yet-built homes.
+- **Upload** — attach the builder's official rendering/floor plan (client-side
+  only; nothing is uploaded to a server). Captioned as a builder rendering.
 - **Copy** — copies the result to the clipboard.
+
+> Why not pull photos from Zillow/Realtor.com? Neither has a usable public API,
+> scraping breaks their ToS, their listing photos are copyrighted, and an unbuilt
+> home isn't listed there anyway — so a real photo would misrepresent the property.
 
 ## Deploying the Worker (needed for Generate / Rewrite)
 
@@ -63,6 +73,7 @@ Set at the top of `worker/worker.js` (Gemini API, `generativelanguage.googleapis
 
 - `MODEL_GENERATE = "gemini-3.5-flash"` — descriptions (~90–120 words).
 - `MODEL_REWRITE  = "gemini-3.5-flash"` — the rewrite path.
+- `MODEL_IMAGE    = "gemini-2.5-flash-image"` — AI concept renderings ("Nano Banana").
 
 `gemini-3.5-flash` is the current GA flagship. Bump `MODEL_GENERATE` to a Gemini
 Pro model if you want richer descriptions.

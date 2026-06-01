@@ -21,6 +21,7 @@
 // current GA flagship as of 2026. Bump generate to a Pro model here if you want.
 const MODEL_GENERATE = "gemini-3.5-flash";
 const MODEL_REWRITE  = "gemini-3.5-flash";
+const MODEL_IMAGE    = "gemini-2.5-flash-image";   // "Nano Banana" image model
 
 const REWRITE_SYSTEM =
   "You are a Fair Housing compliance editor for U.S. real estate listings. " +
@@ -171,6 +172,41 @@ async function callGemini(model, systemText, userText, key, temperature) {
   return { ok: true, text };
 }
 
+function imagePrompt(facts) {
+  return "Photorealistic architectural exterior rendering of a single-family home, " +
+    "front three-quarter view at eye level, daytime with soft natural light, a landscaped " +
+    "front yard, professional real-estate photography style, landscape orientation. " +
+    "Reflect these details where they affect the exterior: " + facts + ". " +
+    "Show the building and yard only. No people, no text, no logos, no watermarks.";
+}
+
+async function callGeminiImage(promptText, key) {
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/" + MODEL_IMAGE + ":generateContent";
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: promptText }] }],
+      generationConfig: { responseModalities: ["IMAGE"] },
+    }),
+  });
+  const data = await r.json().catch(() => null);
+  if (!r.ok) {
+    const msg = (data && data.error && data.error.message) || ("Gemini image HTTP " + r.status);
+    return { ok: false, status: r.status, error: msg };
+  }
+  const cand = data && data.candidates && data.candidates[0];
+  const parts = (cand && cand.content && cand.content.parts) || [];
+  const imgPart = parts.find(p => (p.inlineData && p.inlineData.data) || (p.inline_data && p.inline_data.data));
+  const inline = imgPart && (imgPart.inlineData || imgPart.inline_data);
+  if (!inline) {
+    const reason = cand && cand.finishReason ? " (finishReason: " + cand.finishReason + ")" : "";
+    return { ok: false, status: 502, error: "No image returned" + reason };
+  }
+  const mime = inline.mimeType || inline.mime_type || "image/png";
+  return { ok: true, dataUrl: "data:" + mime + ";base64," + inline.data };
+}
+
 export default {
   async fetch(request, env) {
     const cors = corsHeaders(request.headers.get("Origin") || "");
@@ -187,7 +223,7 @@ export default {
     try { payload = await request.json(); }
     catch { return json({ error: "Invalid JSON body" }, 400, cors); }
 
-    const mode = payload && payload.mode === "rewrite" ? "rewrite" : "generate";
+    const mode = (payload && (payload.mode === "rewrite" || payload.mode === "image")) ? payload.mode : "generate";
 
     try {
       if (mode === "rewrite") {
@@ -198,6 +234,16 @@ export default {
         const out = await callGemini(MODEL_REWRITE, REWRITE_SYSTEM, text, geminiKey, 0.5);
         if (!out.ok) return json({ error: out.error }, out.status, cors);
         return json(asContent(out.text), 200, cors);
+      }
+
+      if (mode === "image") {
+        const facts = (payload.facts || "").toString().trim();
+        if (!facts) return json({ error: "Missing 'facts'" }, 400, cors);
+        if (facts.length > MAX_INPUT_CHARS) return json({ error: "Facts too long" }, 413, cors);
+
+        const out = await callGeminiImage(imagePrompt(facts), geminiKey);
+        if (!out.ok) return json({ error: out.error }, out.status, cors);
+        return json({ image: out.dataUrl }, 200, cors);
       }
 
       // ---- generate ----
