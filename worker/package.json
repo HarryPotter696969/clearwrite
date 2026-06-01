@@ -6,7 +6,8 @@
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
-    "secret": "wrangler secret put ANTHROPIC_API_KEY"
+    "secret:anthropic": "wrangler secret put ANTHROPIC_API_KEY",
+    "secret:maps": "wrangler secret put GOOGLE_MAPS_API_KEY"
   },
   "devDependencies": {
     "wrangler": "^3"

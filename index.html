@@ -102,6 +102,22 @@
     font-family:'Spectral',serif;font-size:18px;line-height:1.7;color:var(--ink);outline:none}
   .toolbtns{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap}
 
+  /* mode toggle + address field */
+  .modes{display:flex;gap:8px;margin-bottom:16px}
+  .modebtn{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.06em;
+    text-transform:uppercase;padding:7px 12px;border:1px solid var(--line);background:none;
+    color:var(--ink-soft);cursor:pointer;transition:.15s ease}
+  .modebtn:hover{color:var(--ink)}
+  .modebtn.active{border-color:var(--ink);color:var(--ink);background:rgba(27,34,51,.06)}
+  .addr{width:100%;border:none;border-bottom:1px solid var(--line);background:none;
+    font-family:'Spectral',serif;font-size:17px;color:var(--ink);outline:none;
+    padding:4px 0 12px;margin-bottom:8px}
+  .addr::placeholder{color:var(--ink-faint)}
+  .rw-actions{display:flex;gap:10px;align-items:center}
+  .flagsbadge{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase}
+  .flagsbadge.ok{color:var(--clear)}
+  .flagsbadge.bad{color:var(--high)}
+
   /* rendered / results */
   #rendered{min-height:120px;font-size:18px;line-height:1.8;white-space:pre-wrap}
   #rendered:empty::before{content:"Scan results appear here.";color:var(--ink-faint);font-style:italic}
@@ -206,17 +222,23 @@
 
     <div class="tool">
       <div class="panel">
+        <div class="modes">
+          <button class="modebtn active" id="modeGen">Generate from facts</button>
+          <button class="modebtn" id="modeRew">Rewrite listing</button>
+        </div>
         <div class="phead">
-          <span>Listing copy</span>
+          <span id="inLabel">Property facts</span>
           <span class="packbadge">pack: fair-housing/us · v1</span>
         </div>
-        <textarea id="input">Stunning 4-bed, 3-bath home, perfect for a growing family! Nestled in a safe, exclusive neighborhood within walking distance of top-rated schools and just minutes from several churches. This family-friendly home is ideal for young professionals or empty-nesters who want a quiet community. The spacious master suite and fenced yard make it great for kids and pets.</textarea>
+        <input id="addr" class="addr" placeholder="123 Maple St, City, ST" value="1024 Pearl St, Boulder, CO 80302">
+        <textarea id="input">3 bed, 2 bath, 1,750 sq ft. Renovated kitchen with quartz counters, hardwood floors throughout, fenced backyard, detached 2-car garage, central A/C, and a covered front porch.</textarea>
         <div class="toolbtns">
           <button class="btn primary" id="scanBtn">Scan copy</button>
-          <button class="btn" id="aiBtn" disabled>AI rewrite →</button>
+          <button class="btn" id="aiBtn">Generate compliant description →</button>
         </div>
         <div class="rewrite" id="rewriteBox">
-          <h4>Compliant rewrite <button class="copy" id="copyBtn">Copy</button></h4>
+          <h4><span id="rewriteTitle">Compliant description</span>
+            <span class="rw-actions"><span class="flagsbadge ok" id="flagsBadge"></span><button class="copy" id="copyBtn">Copy</button></span></h4>
           <p id="rewriteText"></p>
           <div class="err" id="rewriteErr"></div>
         </div>
@@ -402,38 +424,75 @@ $("scanBtn").addEventListener("click", () => {
   $("aiBtn").disabled = false;
 });
 
-/* ---- AI rewrite via Cloudflare Worker proxy ----
-   The Worker holds the Anthropic API key as a secret and owns the system
-   prompt, so no key is ever exposed in this page. Set WORKER_URL below to
-   your deployed Worker (https://clearwrite-proxy.<subdomain>.workers.dev). */
+/* ---- AI generate / rewrite via Cloudflare Worker proxy ----
+   The Worker holds the API keys (Anthropic + Google Maps) as secrets and owns
+   the system prompts, so nothing sensitive is exposed in this page. Set
+   WORKER_URL below to your deployed Worker. */
 const WORKER_URL = "__WORKER_URL__";
 
+const DEFAULTS = {
+  generate: "3 bed, 2 bath, 1,750 sq ft. Renovated kitchen with quartz counters, hardwood floors throughout, fenced backyard, detached 2-car garage, central A/C, and a covered front porch.",
+  rewrite: "Stunning 4-bed, 3-bath home, perfect for a growing family! Nestled in a safe, exclusive neighborhood within walking distance of top-rated schools and just minutes from several churches. This family-friendly home is ideal for young professionals or empty-nesters who want a quiet community. The spacious master suite and fenced yard make it great for kids and pets."
+};
+
+let mode = "generate";
+function setMode(next){
+  if(next === mode) return;
+  // swap the example text only if the user hasn't edited it
+  if($("input").value.trim() === DEFAULTS[mode].trim()) $("input").value = DEFAULTS[next];
+  mode = next;
+  $("modeGen").classList.toggle("active", mode==="generate");
+  $("modeRew").classList.toggle("active", mode==="rewrite");
+  $("addr").style.display      = mode==="generate" ? "" : "none";
+  $("inLabel").textContent     = mode==="generate" ? "Property facts" : "Listing copy";
+  $("aiBtn").textContent       = mode==="generate" ? "Generate compliant description →" : "Rewrite for compliance →";
+  $("rewriteTitle").textContent= mode==="generate" ? "Compliant description" : "Compliant rewrite";
+  $("rewriteBox").classList.remove("show");
+}
+$("modeGen").addEventListener("click", ()=>setMode("generate"));
+$("modeRew").addEventListener("click", ()=>setMode("rewrite"));
+
 $("aiBtn").addEventListener("click", async () => {
-  const text = $("input").value.trim();
-  if(!text) return;
-  const box = $("rewriteBox"), out = $("rewriteText"), err = $("rewriteErr");
-  box.classList.add("show"); err.textContent="";
-  out.innerHTML = `<span class="spin"></span> Rewriting for Fair Housing compliance…`;
+  const box=$("rewriteBox"), out=$("rewriteText"), err=$("rewriteErr"), badge=$("flagsBadge");
+  err.textContent=""; badge.textContent=""; badge.className="flagsbadge";
+
+  let payload;
+  if(mode === "generate"){
+    const facts = $("input").value.trim();
+    if(!facts){ box.classList.add("show"); err.textContent="Add a few property facts first."; return; }
+    payload = { mode:"generate", address:$("addr").value.trim(), facts };
+  } else {
+    const text = $("input").value.trim();
+    if(!text) return;
+    payload = { mode:"rewrite", text };
+  }
+
+  box.classList.add("show");
+  out.innerHTML = `<span class="spin"></span> ${mode==="generate" ? "Writing a compliant description…" : "Rewriting for Fair Housing compliance…"}`;
   $("aiBtn").disabled = true;
 
   try{
     if(WORKER_URL.indexOf("__WORKER_URL__") !== -1)
-      throw new Error("rewrite service not configured yet");
+      throw new Error("service not configured yet");
     const res = await fetch(WORKER_URL,{
       method:"POST", headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ text })
+      body:JSON.stringify(payload)
     });
     const data = await res.json().catch(()=>({}));
     if(!res.ok) throw new Error((data && data.error) || ("HTTP "+res.status));
     const txt = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n").trim();
     if(!txt) throw new Error("empty response");
     out.textContent = txt;
+    // compliance proof loop: re-scan the output with the same rule pack
+    const flags = scan(txt, RULE_PACK).length;
+    badge.textContent = flags===0 ? "✓ 0 flags" : "⚠ "+flags+" flag"+(flags===1?"":"s");
+    badge.className = "flagsbadge " + (flags===0 ? "ok" : "bad");
   }catch(e){
-    out.textContent = "";
-    err.textContent = "Couldn't reach the rewrite service right now ("+e.message
-      +"). The scan above still works — that's the rule-pack core. Try the rewrite again in a moment.";
+    out.textContent="";
+    err.textContent = "Couldn't reach the service right now ("+e.message
+      +"). The scan tool still works — that's the rule-pack core. Try again in a moment.";
   }finally{
-    $("aiBtn").disabled = false;
+    $("aiBtn").disabled=false;
   }
 });
 
