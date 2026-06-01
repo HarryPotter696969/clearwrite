@@ -1,0 +1,14 @@
+{
+  "name": "clearwrite-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cloudflare Worker that proxies Clearwrite's AI rewrite to the Anthropic API.",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "secret": "wrangler secret put ANTHROPIC_API_KEY"
+  },
+  "devDependencies": {
+    "wrangler": "^3"
+  }
+}

@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clearwrite — compliance for the copy you already write</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,800&family=Spectral:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f4efe3;
+    --paper-2:#efe8d8;
+    --ink:#1b2233;
+    --ink-soft:#525a6c;
+    --ink-faint:#9a957f;
+    --line:rgba(27,34,51,.14);
+    --high:#b1432b;       /* serious violation */
+    --med:#bf7a1c;        /* caution */
+    --low:#8b8470;        /* low / context-dependent */
+    --clear:#2f6b4f;      /* compliant */
+    --clear-bg:#e6efe6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Spectral',Georgia,serif;
+    font-size:18px;line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  /* paper grain */
+  body::before{
+    content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E");
+    mix-blend-mode:multiply;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:0 28px;position:relative;z-index:1}
+  .mono{font-family:'JetBrains Mono',monospace}
+
+  /* ---- top bar ---- */
+  header{padding:26px 0 0}
+  .bar{display:flex;justify-content:space-between;align-items:baseline}
+  .logo{font-family:'Fraunces',serif;font-weight:600;font-size:24px;letter-spacing:-.01em}
+  .logo .dot{color:var(--high)}
+  .navtag{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-soft)}
+
+  /* ---- hero ---- */
+  .hero{padding:78px 0 60px;border-bottom:1px solid var(--line)}
+  .eyebrow{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--high);margin-bottom:22px;
+    opacity:0;animation:rise .7s .05s ease forwards}
+  h1{font-family:'Fraunces',serif;font-weight:600;font-size:clamp(40px,7vw,76px);
+    line-height:1.02;letter-spacing:-.02em;max-width:15ch;
+    opacity:0;animation:rise .8s .15s ease forwards}
+  h1 em{font-style:italic;color:var(--high);font-weight:500}
+  .lede{font-size:21px;color:var(--ink-soft);max-width:54ch;margin-top:26px;
+    opacity:0;animation:rise .8s .3s ease forwards}
+  .herobtns{margin-top:36px;display:flex;gap:16px;flex-wrap:wrap;
+    opacity:0;animation:rise .8s .45s ease forwards}
+
+  .btn{font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:.04em;
+    padding:14px 24px;border:1px solid var(--ink);cursor:pointer;background:none;
+    color:var(--ink);transition:.18s ease;text-decoration:none;display:inline-block}
+  .btn:hover{background:var(--ink);color:var(--paper)}
+  .btn.primary{background:var(--ink);color:var(--paper)}
+  .btn.primary:hover{background:var(--high);border-color:var(--high)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+
+  /* sample redline card in hero */
+  .sample{margin-top:54px;background:#fffdf7;border:1px solid var(--line);
+    box-shadow:14px 16px 0 -2px rgba(27,34,51,.07);padding:30px 34px;max-width:760px;
+    opacity:0;animation:rise .9s .6s ease forwards;position:relative}
+  .sample .tag{position:absolute;top:-11px;left:24px;background:var(--high);color:#fff;
+    font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;
+    padding:4px 10px;text-transform:uppercase}
+  .sample p{font-size:20px;line-height:1.75}
+  mark{background:none;color:inherit;padding:0 1px;cursor:help;position:relative}
+  mark.f-high{border-bottom:2.5px solid var(--high);color:var(--high)}
+  mark.f-med{border-bottom:2.5px solid var(--med);color:#9a6212}
+  mark.f-low{border-bottom:2px dotted var(--low)}
+
+  /* ---- section heads ---- */
+  section{padding:74px 0;border-bottom:1px solid var(--line)}
+  .kick{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--ink-soft);margin-bottom:16px}
+  h2{font-family:'Fraunces',serif;font-weight:600;font-size:clamp(28px,4vw,42px);
+    letter-spacing:-.015em;line-height:1.08;max-width:20ch}
+  .sub{color:var(--ink-soft);max-width:58ch;margin-top:16px;font-size:18px}
+
+  /* ---- the tool ---- */
+  .tool{display:grid;grid-template-columns:1.15fr .85fr;gap:34px;margin-top:40px;align-items:start}
+  @media(max-width:820px){.tool{grid-template-columns:1fr}}
+  .panel{background:#fffdf7;border:1px solid var(--line);padding:22px}
+  .panel .phead{display:flex;justify-content:space-between;align-items:center;
+    margin-bottom:14px;font-family:'JetBrains Mono',monospace;font-size:11px;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft)}
+  .packbadge{color:var(--clear);border:1px solid var(--clear);padding:3px 8px;border-radius:2px}
+  textarea{width:100%;min-height:230px;border:none;resize:vertical;background:none;
+    font-family:'Spectral',serif;font-size:18px;line-height:1.7;color:var(--ink);outline:none}
+  .toolbtns{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap}
+
+  /* rendered / results */
+  #rendered{min-height:120px;font-size:18px;line-height:1.8;white-space:pre-wrap}
+  #rendered:empty::before{content:"Scan results appear here.";color:var(--ink-faint);font-style:italic}
+  .score{display:flex;align-items:baseline;gap:12px;margin-bottom:18px;
+    padding-bottom:16px;border-bottom:1px solid var(--line)}
+  .score .n{font-family:'Fraunces',serif;font-size:46px;font-weight:600;line-height:1}
+  .score .n.ok{color:var(--clear)}
+  .score .n.bad{color:var(--high)}
+  .score .lbl{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--ink-soft)}
+  .flag{border-left:3px solid var(--med);padding:12px 0 12px 16px;margin-bottom:14px}
+  .flag.s-high{border-color:var(--high)}
+  .flag.s-low{border-color:var(--low)}
+  .flag .term{font-weight:600}
+  .flag .cat{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;color:#fff;background:var(--med);padding:2px 7px;margin-left:8px}
+  .flag.s-high .cat{background:var(--high)}
+  .flag.s-low .cat{background:var(--low)}
+  .flag .why{color:var(--ink-soft);font-size:15.5px;margin-top:5px}
+  .flag .fix{font-size:15.5px;margin-top:6px}
+  .flag .fix b{color:var(--clear);font-weight:600}
+
+  .rewrite{margin-top:20px;background:var(--clear-bg);border:1px solid #c6dcc6;padding:18px 20px;display:none}
+  .rewrite.show{display:block;animation:rise .5s ease}
+  .rewrite h4{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--clear);margin-bottom:10px;display:flex;
+    justify-content:space-between;align-items:center}
+  .rewrite p{font-size:17px;line-height:1.7}
+  .copy{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;
+    background:none;border:1px solid var(--clear);color:var(--clear);padding:4px 9px;
+    cursor:pointer;text-transform:uppercase}
+  .copy:hover{background:var(--clear);color:#fff}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--clear);
+    border-top-color:transparent;border-radius:50%;animation:rot .7s linear infinite;vertical-align:-1px}
+  .err{color:var(--high);font-size:14px;margin-top:10px;font-style:italic}
+
+  /* ---- roadmap ---- */
+  .packs{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:40px}
+  @media(max-width:720px){.packs{grid-template-columns:1fr}}
+  .pack{border:1px solid var(--line);padding:22px;background:#fffdf7;position:relative}
+  .pack.live{border-color:var(--clear);box-shadow:0 0 0 1px var(--clear)}
+  .pack .st{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;
+    text-transform:uppercase;margin-bottom:14px}
+  .pack.live .st{color:var(--clear)}
+  .pack.soon .st{color:var(--ink-faint)}
+  .pack h3{font-family:'Fraunces',serif;font-weight:600;font-size:23px;margin-bottom:6px}
+  .pack p{font-size:15px;color:var(--ink-soft);line-height:1.55}
+  .pack .law{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-soft);margin-top:14px}
+  .pack.soon{opacity:.66}
+
+  /* ---- how ---- */
+  .steps{counter-reset:s;margin-top:36px;display:grid;gap:2px}
+  .step{display:grid;grid-template-columns:64px 1fr;gap:20px;padding:24px 0;border-top:1px solid var(--line)}
+  .step::before{counter-increment:s;content:counter(s,decimal-leading-zero);
+    font-family:'Fraunces',serif;font-size:30px;color:var(--high);font-weight:500}
+  .step h3{font-family:'Fraunces',serif;font-size:22px;font-weight:600;margin-bottom:4px}
+  .step p{color:var(--ink-soft);font-size:16px;max-width:60ch}
+
+  /* ---- footer ---- */
+  footer{padding:56px 0 70px}
+  .disc{background:var(--paper-2);border:1px solid var(--line);padding:20px 24px;
+    font-size:14px;color:var(--ink-soft);max-width:70ch}
+  .disc b{color:var(--ink)}
+  .foot-meta{margin-top:30px;font-family:'JetBrains Mono',monospace;font-size:11px;
+    letter-spacing:.1em;color:var(--ink-faint);text-transform:uppercase;
+    display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+
+  @keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+  @keyframes rot{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="bar">
+      <div class="logo">Clearwrite<span class="dot">.</span></div>
+      <div class="navtag mono">Compliance engine · v0.1</div>
+    </div>
+  </header>
+
+  <div class="hero">
+    <div class="eyebrow">Fair Housing · Hiring · Lending</div>
+    <h1>Compliance for the copy you're <em>already writing.</em></h1>
+    <p class="lede">Paste a listing, a job post, or an ad. Clearwrite flags the language that creates legal risk, shows you the rule behind it, and rewrites it clean — so the words sell the property, not a preference.</p>
+    <div class="herobtns">
+      <a href="#tool" class="btn primary">Scan a listing →</a>
+      <a href="#packs" class="btn">See the rule packs</a>
+    </div>
+
+    <div class="sample">
+      <span class="tag mono">Live redline</span>
+      <p>Stunning 4-bed home, <mark class="f-high" title="Familial status">perfect for a growing family</mark>, in a <mark class="f-med" title="Steering / race">safe</mark>, <mark class="f-med" title="Steering / race">exclusive</mark> neighborhood within <mark class="f-med" title="Disability">walking distance</mark> of <mark class="f-low" title="Steering">top-rated schools</mark> and near several <mark class="f-med" title="Religion">churches</mark>.</p>
+    </div>
+  </div>
+
+  <!-- ===== TOOL ===== -->
+  <section id="tool">
+    <div class="kick mono">// the engine</div>
+    <h2>Run a real scan.</h2>
+    <p class="sub">This demo runs the real-estate <b>Fair Housing</b> rule pack against the federal Fair Housing Act. Edit the text, then scan.</p>
+
+    <div class="tool">
+      <div class="panel">
+        <div class="phead">
+          <span>Listing copy</span>
+          <span class="packbadge">pack: fair-housing/us · v1</span>
+        </div>
+        <textarea id="input">Stunning 4-bed, 3-bath home, perfect for a growing family! Nestled in a safe, exclusive neighborhood within walking distance of top-rated schools and just minutes from several churches. This family-friendly home is ideal for young professionals or empty-nesters who want a quiet community. The spacious master suite and fenced yard make it great for kids and pets.</textarea>
+        <div class="toolbtns">
+          <button class="btn primary" id="scanBtn">Scan copy</button>
+          <button class="btn" id="aiBtn" disabled>AI rewrite →</button>
+        </div>
+        <div class="rewrite" id="rewriteBox">
+          <h4>Compliant rewrite <button class="copy" id="copyBtn">Copy</button></h4>
+          <p id="rewriteText"></p>
+          <div class="err" id="rewriteErr"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="phead"><span>Findings</span><span id="packV">—</span></div>
+        <div id="results"><div id="rendered"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== PACKS ===== -->
+  <section id="packs">
+    <div class="kick mono">// architecture</div>
+    <h2>One engine. Swappable rule packs.</h2>
+    <p class="sub">The engine never changes. Each new market is a maintained, citation-backed rule pack — the part that competitors won't keep current. We launch deep on one before opening the next.</p>
+    <div class="packs">
+      <div class="pack live">
+        <div class="st">● Live</div>
+        <h3>Real estate</h3>
+        <p>Catches preference and exclusion language across all seven protected classes; rewrites to describe the property, not the buyer.</p>
+        <div class="law">Fair Housing Act · 42 U.S.C. §3604(c)</div>
+      </div>
+      <div class="pack soon">
+        <div class="st">○ Next</div>
+        <h3>Hiring</h3>
+        <p>Age-coded job-ad language — "recent graduate," "digital native," "energetic" — flagged before a posting goes live.</p>
+        <div class="law">ADEA · EEOC guidance</div>
+      </div>
+      <div class="pack soon">
+        <div class="st">○ Later</div>
+        <h3>Lending</h3>
+        <p>Discriminatory-preference language plus missing "triggering term" disclosures in credit advertising.</p>
+        <div class="law">ECOA · Reg Z · UDAAP</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== HOW ===== -->
+  <section>
+    <div class="kick mono">// how it works</div>
+    <h2>Describe the thing — never the person.</h2>
+    <div class="steps">
+      <div class="step"><div><h3>Scan</h3><p>The rule pack matches risky language and marks every span, with a severity from caution to serious violation.</p></div></div>
+      <div class="step"><div><h3>Explain</h3><p>Each flag cites the protected class and the reason, in plain English — so the agent learns, not just obeys.</p></div></div>
+      <div class="step"><div><h3>Rewrite</h3><p>An optional AI pass returns a clean, compliant version that keeps every real feature and the persuasive tone.</p></div></div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="kick mono">// the fine print</div>
+    <div class="disc">
+      <b>Guidance, not legal advice.</b> Clearwrite helps surface language that may
+      raise Fair Housing concerns, but it is not a lawyer and does not certify or
+      guarantee compliance. The agent and broker remain responsible for the final
+      listing. Rules vary by state and locality and change over time.
+    </div>
+    <div class="foot-meta">
+      <span>Clearwrite — working name, rename freely</span>
+      <span>Prototype · for customer discovery</span>
+    </div>
+  </footer>
+</div>
+
+<script>
+/* ============================================================
+   FAIR HOUSING RULE PACK (us · v1)
+   Each rule = data: pattern, protected category, severity,
+   why it's risky, and a neutral suggestion.
+   Severity: high (explicit pref/exclusion) | med (coded/implied) | low (context-dependent)
+   ============================================================ */
+const RULE_PACK = [
+  {re:/\bperfect for (a )?(growing )?famil(y|ies)\b/gi, cat:"Familial status", sev:"high",
+   why:"States a preference based on the presence of children, which the Fair Housing Act prohibits.",
+   fix:"Describe the space instead — e.g. \u201cfour bedrooms and a large fenced yard.\u201d"},
+  {re:/\b(great|ideal|perfect) for kids\b/gi, cat:"Familial status", sev:"high",
+   why:"Signals a preference about who should live there based on familial status.",
+   fix:"Name the feature: \u201cfenced yard\u201d or \u201cnearby park.\u201d"},
+  {re:/\bfamily[- ]friendly\b/gi, cat:"Familial status", sev:"med",
+   why:"Implies a preference for families with children over other buyers.",
+   fix:"List concrete features (yard, bedrooms) rather than who it suits."},
+  {re:/\byoung professionals?\b/gi, cat:"Familial / age", sev:"med",
+   why:"Implies a preference that can exclude families and older buyers.",
+   fix:"Remove; describe the commute or amenities instead."},
+  {re:/\bempty[- ]nesters?\b/gi, cat:"Familial / age", sev:"med",
+   why:"Targets buyers by life stage, implying a familial-status preference.",
+   fix:"Describe single-level living or low maintenance, factually."},
+  {re:/\b(adults only|no children|no kids|mature (adults|individuals))\b/gi, cat:"Familial status", sev:"high",
+   why:"Explicit exclusion based on familial status. Unlawful unless the property legally qualifies as senior housing.",
+   fix:"Remove entirely unless a senior-housing exemption applies."},
+  {re:/\bbachelor pad\b/gi, cat:"Familial / sex", sev:"med",
+   why:"Implies a preference by gender and household type.",
+   fix:"Describe the layout: \u201cone-bedroom with open living area.\u201d"},
+  {re:/\bwalking distance\b/gi, cat:"Disability", sev:"med",
+   why:"Can imply a preference that excludes people with mobility disabilities.",
+   fix:"Give the actual distance — e.g. \u201c0.3 miles from\u2026\u201d"},
+  {re:/\b(safe|quiet) (neighborhood|area|community)\b/gi, cat:"Steering / race", sev:"med",
+   why:"\u201cSafe\u201d and \u201cquiet\u201d are often read as coded language about neighborhood demographics.",
+   fix:"Describe concrete features — gated entry, alarm system, cul-de-sac."},
+  {re:/\bexclusive\b/gi, cat:"Steering / race", sev:"med",
+   why:"\u201cExclusive\u201d can suggest a policy of exclusion. Sell the amenities, not the exclusivity.",
+   fix:"Replace with specific perks: \u201cprivate pool,\u201d \u201cgated access.\u201d"},
+  {re:/\b(near|close to|minutes from)?\s*(several |nearby )?churches?\b/gi, cat:"Religion", sev:"med",
+   why:"References to religious institutions can imply a religious preference.",
+   fix:"Use \u201cnear places of worship\u201d or omit."},
+  {re:/\bintegrated\b/gi, cat:"Race / national origin", sev:"high",
+   why:"Describing a neighborhood in racial terms is a direct Fair Housing violation.",
+   fix:"Remove; describe the property and its features only."},
+  {re:/\b(top-rated|great|good|excellent) schools?\b/gi, cat:"Steering", sev:"low",
+   why:"School-quality claims are sometimes scrutinized as steering. Context-dependent.",
+   fix:"Optional: state the school-district name factually instead."},
+  {re:/\btraditional neighborhood\b/gi, cat:"Steering / race", sev:"low",
+   why:"\u201cTraditional\u201d can read as coded language about who lives there.",
+   fix:"Describe the architecture or era of the homes instead."}
+];
+
+/* ---- core engine: vertical-agnostic. text + pack -> matches ---- */
+function scan(text, pack){
+  let matches = [];
+  pack.forEach((rule, ri) => {
+    let m;
+    rule.re.lastIndex = 0;
+    while((m = rule.re.exec(text)) !== null){
+      const found = m[0];
+      // skip leading whitespace captured by optional groups
+      const lead = found.length - found.trimStart().length;
+      matches.push({start:m.index+lead, end:m.index+found.length, text:found.trim(), rule, ri});
+      if(m.index === rule.re.lastIndex) rule.re.lastIndex++;
+    }
+  });
+  matches.sort((a,b)=>a.start-b.start);
+  // drop overlaps (keep first / highest priority by pack order)
+  const clean=[]; let lastEnd=-1;
+  for(const mt of matches){ if(mt.start>=lastEnd){ clean.push(mt); lastEnd=mt.end; } }
+  return clean;
+}
+
+const esc = s => s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+function render(text, matches){
+  let out="", cur=0;
+  for(const mt of matches){
+    out += esc(text.slice(cur, mt.start));
+    const cls = mt.rule.sev==="high"?"f-high":mt.rule.sev==="low"?"f-low":"f-med";
+    out += `<mark class="${cls}" title="${mt.rule.cat}">${esc(text.slice(mt.start, mt.end))}</mark>`;
+    cur = mt.end;
+  }
+  out += esc(text.slice(cur));
+  return out;
+}
+
+const $ = id => document.getElementById(id);
+let lastClean = false;
+
+$("scanBtn").addEventListener("click", () => {
+  const text = $("input").value;
+  const matches = scan(text, RULE_PACK);
+  $("packV").textContent = "fair-housing/us · v1";
+
+  const high = matches.filter(m=>m.rule.sev==="high").length;
+  const n = matches.length;
+  lastClean = n===0;
+
+  let html = `<div class="score"><span class="n ${n?'bad':'ok'}">${n}</span>`
+    + `<span class="lbl">${n? (n===1?'flag found':'flags found') + (high? ' · '+high+' serious':'') : 'clean — no flags'}</span></div>`;
+  html += `<div id="rendered">${render(text, matches)}</div>`;
+
+  // group + list each flag once per rule that fired
+  const seen = new Set();
+  matches.forEach(mt=>{
+    if(seen.has(mt.ri)) return; seen.add(mt.ri);
+    const sc = mt.rule.sev==="high"?"s-high":mt.rule.sev==="low"?"s-low":"";
+    html += `<div class="flag ${sc}"><span class="term">\u201c${esc(mt.text)}\u201d</span>`
+      + `<span class="cat">${mt.rule.cat}</span>`
+      + `<div class="why">${mt.rule.why}</div>`
+      + `<div class="fix">Try: <b>${mt.rule.fix}</b></div></div>`;
+  });
+  if(n===0){
+    html += `<p style="color:var(--clear);font-style:italic">No risky language detected by this pack. Always have a human do a final read.</p>`;
+  }
+  $("results").innerHTML = html;
+  $("aiBtn").disabled = false;
+});
+
+/* ---- AI rewrite via Cloudflare Worker proxy ----
+   The Worker holds the Anthropic API key as a secret and owns the system
+   prompt, so no key is ever exposed in this page. Set WORKER_URL below to
+   your deployed Worker (https://clearwrite-proxy.<subdomain>.workers.dev). */
+const WORKER_URL = "__WORKER_URL__";
+
+$("aiBtn").addEventListener("click", async () => {
+  const text = $("input").value.trim();
+  if(!text) return;
+  const box = $("rewriteBox"), out = $("rewriteText"), err = $("rewriteErr");
+  box.classList.add("show"); err.textContent="";
+  out.innerHTML = `<span class="spin"></span> Rewriting for Fair Housing compliance…`;
+  $("aiBtn").disabled = true;
+
+  try{
+    if(WORKER_URL.indexOf("__WORKER_URL__") !== -1)
+      throw new Error("rewrite service not configured yet");
+    const res = await fetch(WORKER_URL,{
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ text })
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error((data && data.error) || ("HTTP "+res.status));
+    const txt = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n").trim();
+    if(!txt) throw new Error("empty response");
+    out.textContent = txt;
+  }catch(e){
+    out.textContent = "";
+    err.textContent = "Couldn't reach the rewrite service right now ("+e.message
+      +"). The scan above still works — that's the rule-pack core. Try the rewrite again in a moment.";
+  }finally{
+    $("aiBtn").disabled = false;
+  }
+});
+
+$("copyBtn").addEventListener("click", () => {
+  const t = $("rewriteText").textContent;
+  navigator.clipboard?.writeText(t);
+  $("copyBtn").textContent = "Copied";
+  setTimeout(()=>$("copyBtn").textContent="Copy", 1400);
+});
+</script>
+</body>
+</html>

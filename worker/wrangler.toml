@@ -1,0 +1,7 @@
+name = "clearwrite-proxy"
+main = "worker.js"
+compatibility_date = "2026-05-01"
+workers_dev = true
+
+# The Anthropic API key is NOT stored here. It is set as an encrypted secret:
+#   npx wrangler secret put ANTHROPIC_API_KEY
