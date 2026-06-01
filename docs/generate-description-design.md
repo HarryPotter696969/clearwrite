@@ -25,13 +25,13 @@ mode = generate                      POST {mode:"generate", address, facts}
   address + facts        ───────▶      1. Geocode address (Google Geocoding API)
                                         2. Nearby Search (Google Places API New),
                                            neutral categories only, distances
-                                        3. Claude (Opus) writes ~90–120 words
-                         ◀───────      Anthropic response (content[].text)
+                                        3. Gemini writes ~90–120 words
+                         ◀───────      normalized {content[].text}
   show text + auto-scan "✓ 0 flags"
 
 mode = rewrite                       POST {mode:"rewrite", text}
-  pasted listing         ───────▶      Claude (Sonnet) compliant rewrite
-                         ◀───────      Anthropic response
+  pasted listing         ───────▶      Gemini compliant rewrite
+                         ◀───────      normalized {content[].text}
 ```
 
 ## Compliance handling (critical)
@@ -49,15 +49,22 @@ framing — the exact things the rule pack flags. Mitigations:
 
 ## Models
 
-- Generate: `claude-opus-4-8` (Opus — per request; ~90–120 words, `max_tokens` ≈ 400)
-- Rewrite: `claude-sonnet-4-6` (cheaper, sufficient)
+Gemini API (`generativelanguage.googleapis.com`):
 
-Both are named constants at the top of `worker/worker.js`.
+- Generate: `gemini-3.5-flash` (~90–120 words)
+- Rewrite: `gemini-3.5-flash`
+
+Both are named constants at the top of `worker/worker.js`. The Worker normalizes
+Gemini's response to an Anthropic-style `{content:[{type:"text",text}]}` shape so
+the page's parsing is unchanged.
 
 ## Secrets (Worker only)
 
-- `ANTHROPIC_API_KEY`
+- `GEMINI_API_KEY` (Google AI Studio / Generative Language API)
 - `GOOGLE_MAPS_API_KEY` (Geocoding API + Places API (New) enabled)
+
+A single Google Cloud key with all three APIs enabled can serve both (either
+secret backs the other).
 
 Generate degrades gracefully: if the Maps key is missing or geocoding fails, it
 still writes a description from the facts alone.

@@ -1,7 +1,7 @@
 # Clearwrite
 
 Compliance redlining for real-estate listing copy. A static landing page +
-demo tool, hosted on **GitHub Pages**, with AI features powered by Claude
+demo tool, hosted on **GitHub Pages**, with AI features powered by **Gemini**
 through a tiny **Cloudflare Worker** proxy that also calls **Google Maps**.
 
 ## What's here
@@ -18,24 +18,30 @@ through a tiny **Cloudflare Worker** proxy that also calls **Google Maps**.
 - **Scan copy** — runs the Fair Housing rule pack locally in the browser. No network.
 - **Generate from facts** (mode) — enter an address + property facts; the Worker
   geocodes the address, pulls **neutral** nearby places from Google Maps
-  (parks, transit, grocery… never schools or places of worship), and Claude
-  (Opus) writes a short, compliant description. The page then re-scans the output
-  and shows **"✓ 0 flags"** as proof.
-- **Rewrite listing** (mode) — paste a listing; Claude (Sonnet) returns a
-  compliant rewrite. No Maps.
+  (parks, transit, grocery… never schools or places of worship), and **Gemini**
+  writes a short, compliant description. The page then re-scans the output and
+  shows **"✓ 0 flags"** as proof.
+- **Rewrite listing** (mode) — paste a listing; **Gemini** returns a compliant
+  rewrite. No Maps.
 - **Copy** — copies the result to the clipboard.
 
 ## Deploying the Worker (needed for Generate / Rewrite)
 
-You need an [Anthropic API key](https://console.anthropic.com/), a
-[Google Maps Platform key](https://console.cloud.google.com/) with **Geocoding API**
-and **Places API (New)** enabled, and a free
-[Cloudflare account](https://dash.cloudflare.com/sign-up).
+You need:
+
+- A **Gemini API key** — from [Google AI Studio](https://aistudio.google.com/apikey).
+- A **Google Maps Platform key** — a [Google Cloud](https://console.cloud.google.com/)
+  key with **Geocoding API** and **Places API (New)** enabled.
+- A free [Cloudflare account](https://dash.cloudflare.com/sign-up).
+
+> Tip: a single Google Cloud API key with **Generative Language API**, **Geocoding API**,
+> and **Places API (New)** all enabled can serve both — set it as either secret and
+> the other falls back to it.
 
 ```bash
 cd worker
 npx wrangler login                            # opens a browser to authorize Cloudflare
-npx wrangler secret put ANTHROPIC_API_KEY     # paste your Anthropic key (hidden)
+npx wrangler secret put GEMINI_API_KEY        # paste your Gemini key (hidden)
 npx wrangler secret put GOOGLE_MAPS_API_KEY   # paste your Google Maps key (hidden)
 npx wrangler deploy                           # prints your Worker URL
 ```
@@ -53,10 +59,13 @@ const WORKER_URL = "https://clearwrite-proxy.<your-subdomain>.workers.dev";
 
 ### Models
 
-Set at the top of `worker/worker.js`:
+Set at the top of `worker/worker.js` (Gemini API, `generativelanguage.googleapis.com`):
 
-- `MODEL_GENERATE = "claude-opus-4-8"` — Opus, for descriptions (pricier; ~90–120 words).
-- `MODEL_REWRITE  = "claude-sonnet-4-6"` — Sonnet, for the rewrite path.
+- `MODEL_GENERATE = "gemini-3.5-flash"` — descriptions (~90–120 words).
+- `MODEL_REWRITE  = "gemini-3.5-flash"` — the rewrite path.
+
+`gemini-3.5-flash` is the current GA flagship. Bump `MODEL_GENERATE` to a Gemini
+Pro model if you want richer descriptions.
 
 ### Locking the Worker to your site
 

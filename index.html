@@ -425,7 +425,7 @@ $("scanBtn").addEventListener("click", () => {
 });
 
 /* ---- AI generate / rewrite via Cloudflare Worker proxy ----
-   The Worker holds the API keys (Anthropic + Google Maps) as secrets and owns
+   The Worker holds the API keys (Gemini + Google Maps) as secrets and owns
    the system prompts, so nothing sensitive is exposed in this page. Set
    WORKER_URL below to your deployed Worker. */
 const WORKER_URL = "__WORKER_URL__";

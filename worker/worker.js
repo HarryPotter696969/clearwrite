@@ -1,19 +1,26 @@
 /* ============================================================
-   Clearwrite — Cloudflare Worker proxy.
+   Clearwrite — Cloudflare Worker proxy (Gemini + Google Maps).
 
    Two paths:
      • generate — {address, facts} → Geocode + Google Places (neutral,
-       compliance-filtered) → Claude (Opus) writes a short compliant description.
-     • rewrite  — {text} → Claude (Sonnet) rewrites a pasted listing compliantly.
+       compliance-filtered) → Gemini writes a short compliant description.
+     • rewrite  — {text} → Gemini rewrites a pasted listing compliantly.
 
    Keys live ONLY here (encrypted secrets), never in the page:
-     npx wrangler secret put ANTHROPIC_API_KEY
+     npx wrangler secret put GEMINI_API_KEY        # Google AI Studio key (Generative Language API)
      npx wrangler secret put GOOGLE_MAPS_API_KEY   # Geocoding API + Places API (New)
+
+   A single Google Cloud key with Generative Language + Geocoding + Places
+   enabled can serve both — set it as either secret (the other falls back to it).
+
+   The Worker returns an Anthropic-style shape ({content:[{type:"text",text}]})
+   so the page's response parsing is unchanged.
    ============================================================ */
 
-// There is no "Opus 4.6" — claude-opus-4-8 is the current Opus. Change here if needed.
-const MODEL_GENERATE = "claude-opus-4-8";
-const MODEL_REWRITE  = "claude-sonnet-4-6";
+// Gemini API models (generativelanguage.googleapis.com). gemini-3.5-flash is the
+// current GA flagship as of 2026. Bump generate to a Pro model here if you want.
+const MODEL_GENERATE = "gemini-3.5-flash";
+const MODEL_REWRITE  = "gemini-3.5-flash";
 
 const REWRITE_SYSTEM =
   "You are a Fair Housing compliance editor for U.S. real estate listings. " +
@@ -69,6 +76,11 @@ function json(body, status, cors) {
     status,
     headers: { "Content-Type": "application/json", ...cors },
   });
+}
+
+// Normalize to the Anthropic-style shape the page already understands.
+function asContent(text) {
+  return { content: [{ type: "text", text }] };
 }
 
 function haversineMiles(aLat, aLng, bLat, bLng) {
@@ -133,22 +145,30 @@ async function nearbyContext(lat, lng, key) {
   return items;
 }
 
-async function callClaude(model, system, userText, key) {
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
+async function callGemini(model, systemText, userText, key, temperature) {
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent";
+  const r = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": key,
-      "anthropic-version": "2023-06-01",
-    },
+    headers: { "Content-Type": "application/json", "x-goog-api-key": key },
     body: JSON.stringify({
-      model,
-      max_tokens: model === MODEL_GENERATE ? 400 : 1000,
-      system,
-      messages: [{ role: "user", content: userText }],
+      system_instruction: { parts: [{ text: systemText }] },
+      contents: [{ role: "user", parts: [{ text: userText }] }],
+      generationConfig: { temperature, maxOutputTokens: 1500 },
     }),
   });
-  return r;
+  const data = await r.json().catch(() => null);
+  if (!r.ok) {
+    const msg = (data && data.error && data.error.message) || ("Gemini HTTP " + r.status);
+    return { ok: false, status: r.status, error: msg };
+  }
+  const cand = data && data.candidates && data.candidates[0];
+  const parts = (cand && cand.content && cand.content.parts) || [];
+  const text = parts.map(p => p.text || "").join("").trim();
+  if (!text) {
+    const reason = cand && cand.finishReason ? " (finishReason: " + cand.finishReason + ")" : "";
+    return { ok: false, status: 502, error: "Empty response from Gemini" + reason };
+  }
+  return { ok: true, text };
 }
 
 export default {
@@ -157,7 +177,11 @@ export default {
 
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405, cors);
-    if (!env.ANTHROPIC_API_KEY) return json({ error: "Server missing ANTHROPIC_API_KEY" }, 500, cors);
+
+    // One Google key can serve both; allow either secret to back the other.
+    const geminiKey = env.GEMINI_API_KEY || env.GOOGLE_MAPS_API_KEY;
+    const mapsKey = env.GOOGLE_MAPS_API_KEY || env.GEMINI_API_KEY;
+    if (!geminiKey) return json({ error: "Server missing GEMINI_API_KEY" }, 500, cors);
 
     let payload;
     try { payload = await request.json(); }
@@ -171,13 +195,9 @@ export default {
         if (!text) return json({ error: "Missing 'text'" }, 400, cors);
         if (text.length > MAX_INPUT_CHARS) return json({ error: "Listing too long" }, 413, cors);
 
-        const aRes = await callClaude(MODEL_REWRITE, REWRITE_SYSTEM, text, env.ANTHROPIC_API_KEY);
-        const data = await aRes.json().catch(() => null);
-        if (!aRes.ok) {
-          const msg = (data && data.error && data.error.message) || ("Anthropic HTTP " + aRes.status);
-          return json({ error: msg }, aRes.status, cors);
-        }
-        return json(data, 200, cors);
+        const out = await callGemini(MODEL_REWRITE, REWRITE_SYSTEM, text, geminiKey, 0.5);
+        if (!out.ok) return json({ error: out.error }, out.status, cors);
+        return json(asContent(out.text), 200, cors);
       }
 
       // ---- generate ----
@@ -189,11 +209,11 @@ export default {
       // Live Google Maps lookup (graceful: skip if no key / geocode fails).
       let locationLine = address ? `Address: ${address}` : "";
       let nearby = [];
-      if (address && env.GOOGLE_MAPS_API_KEY) {
-        const geo = await geocode(address, env.GOOGLE_MAPS_API_KEY);
+      if (address && mapsKey) {
+        const geo = await geocode(address, mapsKey);
         if (geo) {
           locationLine = `Address: ${geo.formatted}`;
-          nearby = await nearbyContext(geo.lat, geo.lng, env.GOOGLE_MAPS_API_KEY);
+          nearby = await nearbyContext(geo.lat, geo.lng, mapsKey);
         }
       }
 
@@ -207,13 +227,9 @@ export default {
         (locationLine ? locationLine + "\n" : "") +
         nearbyText;
 
-      const aRes = await callClaude(MODEL_GENERATE, GENERATE_SYSTEM, userText, env.ANTHROPIC_API_KEY);
-      const data = await aRes.json().catch(() => null);
-      if (!aRes.ok) {
-        const msg = (data && data.error && data.error.message) || ("Anthropic HTTP " + aRes.status);
-        return json({ error: msg }, aRes.status, cors);
-      }
-      return json(data, 200, cors);
+      const out = await callGemini(MODEL_GENERATE, GENERATE_SYSTEM, userText, geminiKey, 0.8);
+      if (!out.ok) return json({ error: out.error }, out.status, cors);
+      return json(asContent(out.text), 200, cors);
     } catch (e) {
       return json({ error: "Upstream request failed: " + (e && e.message) }, 502, cors);
     }
